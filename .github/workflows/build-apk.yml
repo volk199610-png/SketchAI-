@@ -1,0 +1,76 @@
+name: Build SketchAI APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-apk.yml'
+      - 'SketchAI.zip'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Extract SketchAI project
+        run: |
+          rm -rf project
+          mkdir project
+          unzip -q SketchAI.zip -d project
+
+          echo "=== ZIP CONTENT ==="
+          find project -maxdepth 3 -type f | head -100
+
+      - name: Find Android project
+        run: |
+          SETTINGS=$(find project -name "settings.gradle.kts" -o -name "settings.gradle" | head -1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle or settings.gradle.kts not found"
+            exit 1
+          fi
+
+          PROJECT_ROOT=$(dirname "$SETTINGS")
+
+          echo "ANDROID_PROJECT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+
+          echo "=== ANDROID PROJECT ==="
+          echo "$PROJECT_ROOT"
+
+      - name: Build APK
+        run: |
+          cd "$ANDROID_PROJECT"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: Find APK
+        run: |
+          echo "=== APK FILES ==="
+          find "$ANDROID_PROJECT" -type f -name "*.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SketchAI-debug-APK
+          path: |
+            **/build/outputs/apk/**/*.apk
+          if-no-files-found: error
